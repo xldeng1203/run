@@ -131,6 +131,7 @@ int main( int argc, char** argv )
 #else
 		void* status = NULL;
 		pthread_join( _vThreads[i], &status );
+		cout<<"pthread_join finished"<<endl;
 #endif
 	}
 
