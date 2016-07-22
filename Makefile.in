@@ -106,6 +106,8 @@ am_scan_OBJECTS = main.$(OBJEXT) http.$(OBJEXT) utils.$(OBJEXT) \
 	Locker.$(OBJEXT)
 scan_OBJECTS = $(am_scan_OBJECTS)
 scan_LDADD = $(LDADD)
+scan_LINK = $(CXXLD) $(AM_CXXFLAGS) $(CXXFLAGS) $(scan_LDFLAGS) \
+	$(LDFLAGS) -o $@
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
 am__v_P_0 = false
@@ -275,6 +277,8 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 scan_SOURCES = main.cpp http.cpp utils.cpp Locker.cpp
+INCLUDES = -I ./include
+scan_LDFLAGS = -L ./lib -lssl -lcrypto
 AUTOMAKE_OPTIONS = foreign
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -374,7 +378,7 @@ clean-binPROGRAMS:
 
 scan$(EXEEXT): $(scan_OBJECTS) $(scan_DEPENDENCIES) $(EXTRA_scan_DEPENDENCIES) 
 	@rm -f scan$(EXEEXT)
-	$(AM_V_CXXLD)$(CXXLINK) $(scan_OBJECTS) $(scan_LDADD) $(LIBS)
+	$(AM_V_CXXLD)$(scan_LINK) $(scan_OBJECTS) $(scan_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)

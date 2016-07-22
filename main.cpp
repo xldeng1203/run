@@ -64,22 +64,34 @@ int main( int argc, char** argv )
 	WSADATA wsaData;
 	memset(&wsaData, 0, sizeof(wsaData));
 	::WSAStartup(0x0202, &wsaData);
+#else
+	SSL_load_error_strings();
+	ERR_load_BIO_strings();
+	OpenSSL_add_all_algorithms();
 #endif
 
 	string url = argv[1];
-	size_t n = url.find( HTTP_HEADER );
-	if ( 0 == n )
+	string header;
+	size_t n;
+	if ( 0 == (n=url.find( HTTP_HEADER )) )
 	{
-		url.erase( 0, HTTP_HEADER.size() );
+		header = HTTP_HEADER;
+		url.erase( 0, header.size() );
 	}
+	else if ( 0 == (n=url.find( HTTPS_HEADER )) )
+	{
+		header = HTTPS_HEADER;
+		url.erase( 0, header.size() );
+	}
+
 	n = url.find( "/" );
 	if ( string::npos != n )
 	{
-		g_header = HTTP_HEADER + url.substr( 0, n );
+		g_header = header + url.substr( 0, n );
 	}
 	else
 	{
-		g_header = HTTP_HEADER + url;
+		g_header = header + url;
 	}
 	g_header += "/";
 
@@ -161,7 +173,8 @@ void parseWebUrl( const string& data )
 		{
 			string url = data.substr( n, np-n );
 			m = np+1;
-			if ( 0 != url.find( HTTP_HEADER ) )
+			if ( 0 != url.find( HTTP_HEADER ) 
+				&& 0 != url.find( HTTPS_HEADER ) )
 			{
 				url = g_header + url;
 			}
@@ -214,7 +227,8 @@ void parseWebImg( const string& data )
 		if ( string::npos != np )
 		{
 			string url = data.substr( n, np-n );
-			if ( 0 != url.find( HTTP_HEADER ) )
+			if ( 0 != url.find( HTTP_HEADER ) 
+				&& 0 != url.find( HTTPS_HEADER ) )
 			{
 				url = g_header + url;
 			}

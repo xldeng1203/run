@@ -1,6 +1,34 @@
 #ifndef _HTTP_H_
 #define _HTTP_H_
 #include "Utils.h"
+#include "openssl/bio.h"
+#include "openssl/ssl.h"
+#include "openssl/err.h"
+
+typedef struct _tag_COMM_HANDLE
+{
+#ifdef WIN32
+	SOCKET sock;
+#else
+	int sock;
+#endif
+	SSL* ssl;
+	SSL_CTX* ctx;
+	BIO* bio;
+	bool isSsl;
+	_tag_COMM_HANDLE()
+#ifdef WIN32
+	: sock(INVALID_SOCKET)
+#else
+	: sock(-1)
+#endif
+	, ctx(NULL)
+	, isSsl(false)
+	, ssl(NULL)
+	, bio(NULL)
+	{
+	}
+}COMM_HANDLE;
 
 class CHttp
 {
@@ -22,6 +50,14 @@ private:
 	bool parseResponse();
 	void parseLine( const string& line, vector< string >& vCookie );
 	void trimUrl( string& url );
+	
+	bool connectCommon();
+	bool connectSsl();
+
+	bool sendCommon( const string& data );
+	bool sendSsl( const string& data );
+	bool recvCommon( string& data );
+	bool recvSsl( string& data );
 private:
 	bool _get;
 #ifdef WIN32
@@ -29,6 +65,8 @@ private:
 #else
 	int _sock;
 #endif
+	bool _ssl;
+	COMM_HANDLE _hComm;
 	string _postData;
 	string _requestRes;
 	string _host;

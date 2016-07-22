@@ -19,6 +19,7 @@
 using namespace std;
 
 const string HTTP_HEADER = "http://";
+const string HTTPS_HEADER = "https://";
 
 class Utils
 {

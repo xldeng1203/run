@@ -3,6 +3,7 @@
 #include <time.h>
 #include "Utils.h"
 #include "Locker.h"
+/* Initializing OpenSSL */
 using namespace std;
 
 string CHttp::_cookie;
@@ -16,6 +17,7 @@ void hostUnlock();
 CHttp::CHttp()
 : _get(true)
 , _sock(-1)
+, _ssl(false)
 {
 }
 
@@ -31,13 +33,11 @@ void CHttp::addHeader( const string& key, const string& value )
 
 bool CHttp::request( const string& url, bool get )
 {
-//	cout<<"parseUrl"<<endl;
 	if ( !parseUrl( url ) )
 	{
 		return false;
 	}
 
-//	cout<<"doConnect"<<endl;
 	if ( !doConnect() )
 	{
 		return false;
@@ -119,13 +119,22 @@ bool CHttp::request( const string& url, bool get )
 
 bool CHttp::parseUrl( const string& url )
 {
-	if ( 0 != url.find( HTTP_HEADER ) )
+	string tmp;
+	if ( 0 == url.find( HTTP_HEADER ) )
+	{
+		_ssl = false;
+		tmp = url.substr( HTTP_HEADER.size(), url.size()-HTTP_HEADER.size() );
+	}
+	else if ( 0 == url.find( HTTPS_HEADER ) )
+	{
+		_ssl = true;
+		tmp = url.substr( HTTPS_HEADER.size(), url.size()-HTTPS_HEADER.size() );
+	}
+	else
 	{
 		cout<<"http format error:"<<url<<endl;
 		return false;
 	}
-
-	string tmp = url.substr( HTTP_HEADER.size(), url.size()-HTTP_HEADER.size() );
 
 	trimUrl( tmp );
 
@@ -144,8 +153,9 @@ bool CHttp::parseUrl( const string& url )
 	return true;
 }
 
-bool CHttp::doConnect()
+bool CHttp::connectCommon()
 {
+	_hComm.isSsl = false;
 	sockaddr_in addr;
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(80);
@@ -171,19 +181,18 @@ bool CHttp::doConnect()
 		hostUnlock();
 	}
 
-	_sock = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP );
-	if ( _sock < 0 )
+	_hComm.sock = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP );
+	if ( _hComm.sock < 0 )
 	{
 		cout<<"create socket failed:"<<errno<<endl;
 		return false;
 	}
 
 	int timeout = 1000*30;
-	setsockopt( _sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout) );
+	setsockopt( _hComm.sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout) );
+	setsockopt( _hComm.sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout) );
 
-	setsockopt( _sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout) );
-
-	if ( 0 != connect( _sock, (sockaddr* )&addr, sizeof(addr) ) )
+	if ( 0 != connect( _hComm.sock, (sockaddr* )&addr, sizeof(addr) ) )
 	{
 		cout<<"connect faild:"<<_host<<", error:"<<errno<<endl;
 		doClose();
@@ -192,28 +201,80 @@ bool CHttp::doConnect()
 
 	return true;
 }
+bool CHttp::connectSsl()
+{
+	SSL_CTX* ctx = SSL_CTX_new(SSLv23_client_method());
+	BIO* bio = BIO_new_ssl_connect(ctx);
+	SSL* ssl = NULL;
+	BIO_get_ssl( bio, &ssl );
+	SSL_set_mode( ssl, SSL_MODE_AUTO_RETRY );
+	string conn = _host + ":443";
+	BIO_set_conn_hostname( bio, conn.data() );
+	int timeout = 1000*30;
+	int sock = -1;
+	BIO_get_fd( BIO_next(bio), &sock );
+	setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout) );
+	setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout) );
+	if ( BIO_do_connect(bio) <= 0 )
+	{
+		cout<<"connect failed:"<<ERR_reason_error_string(ERR_get_error())<<endl;
+		return false;
+	}
+	if(SSL_get_verify_result(ssl) != X509_V_OK)
+	{
+		cout<<"verify cert failed:"<<ERR_reason_error_string(ERR_get_error())<<endl;
+	}
+	_hComm.isSsl = true;
+	_hComm.ssl = ssl;
+	_hComm.ctx = ctx;
+	_hComm.bio = bio;
+	return true;
+}
+
+bool CHttp::doConnect()
+{
+	if ( !_ssl )
+	{
+		return connectCommon();
+	}
+	else
+	{
+		return connectSsl();
+	}
+}
 
 void CHttp::doClose()
 {
-	if ( -1 != _sock )
+	if ( _hComm.isSsl )
 	{
+		if ( NULL != _hComm.ctx )
+		{
+			SSL_CTX_free( _hComm.ctx );
+			_hComm.ctx = NULL;
+		}
+	}
+	else
+	{
+		if ( -1 != _hComm.sock )
+		{
 #ifdef WIN32
-		closesocket(_sock);
-		_sock = INVALID_SOCKET;
+			closesocket(_hComm.sock);
+			_hComm.sock = INVALID_SOCKET;
 #else
-		close( _sock );
-		_sock = -1;
+			close( _hComm.sock );
+			_hComm.sock = -1;
+		}
 #endif
 	}
 }
 
-bool CHttp::doSend( const string& data )
+bool CHttp::sendCommon( const string& data )
 {
 	int sending = data.size();
 	int sent = 0;
 	while( sending > 0 )
 	{
-		int ret = send( _sock, data.data()+sent, sending, 0 );
+		int ret = send( _hComm.sock, data.data()+sent, sending, 0 );
 		if ( ret <= 0 )
 		{
 			cout<<"send error:"<<errno<<endl;
@@ -227,13 +288,33 @@ bool CHttp::doSend( const string& data )
 
 	return true;
 }
-bool CHttp::doRecv( string& data )
+bool CHttp::sendSsl( const string& data )
+{
+	int sending = data.size();
+	int sent = 0;
+	while( sending > 0 )
+	{
+		int ret = BIO_write( _hComm.bio, data.data()+sent, sending );
+		if ( ret <= 0 )
+		{
+			cout<<"send error:"<<ERR_reason_error_string(ERR_get_error())<<endl;
+			doClose();
+			return false;
+		}
+
+		sent += ret;
+		sending -= ret;
+	}
+
+	return true;
+}
+bool CHttp::recvCommon( string& data )
 {
 	int ret = 1;
 	while( ret > 0 )
 	{
 		char szTemp[1024] = {0};
-		ret = recv( _sock, szTemp, sizeof(szTemp), 0 );
+		ret = recv( _hComm.sock, szTemp, sizeof(szTemp), 0 );
 		if ( ret > 0 )
 		{
 			data.append( (char*)szTemp, ret );
@@ -245,6 +326,48 @@ bool CHttp::doRecv( string& data )
 	}
 
 	return true;
+}
+bool CHttp::recvSsl( string& data )
+{
+	int ret = 1;
+	while( ret > 0 )
+	{
+		char szTemp[1024] = {0};
+		ret = BIO_read( _hComm.bio, szTemp, sizeof(szTemp) );
+		if ( ret > 0 )
+		{
+			data.append( (char*)szTemp, ret );
+		}
+		else
+		{
+			cout<<"recv end:"<<ret<<", err:"<<ERR_reason_error_string(ERR_get_error())<<endl;
+		}
+	}
+
+	return true;
+}
+
+bool CHttp::doSend( const string& data )
+{
+	if ( _hComm.isSsl )
+	{
+		return sendSsl( data );
+	}
+	else
+	{
+		return sendCommon( data );
+	}
+}
+bool CHttp::doRecv( string& data )
+{
+	if ( _hComm.isSsl )
+	{
+		return recvSsl( data );
+	}
+	else
+	{
+		return recvCommon( data );
+	}
 }
 
 bool CHttp::parseResponse()
