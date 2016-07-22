@@ -211,19 +211,19 @@ bool CHttp::connectSsl()
 	string conn = _host + ":443";
 	BIO_set_conn_hostname( bio, conn.data() );
 	int timeout = 1000*30;
-	int sock = -1;
-	BIO_get_fd( BIO_next(bio), &sock );
-	setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout) );
-	setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout) );
 	if ( BIO_do_connect(bio) <= 0 )
 	{
-		cout<<"connect failed:"<<ERR_reason_error_string(ERR_get_error())<<endl;
+		cout<<"connect failed:"<<ERR_get_error()<<endl;
 		return false;
 	}
 	if(SSL_get_verify_result(ssl) != X509_V_OK)
 	{
-		cout<<"verify cert failed:"<<ERR_reason_error_string(ERR_get_error())<<endl;
+		cout<<"verify cert failed:"<<ERR_get_error()<<endl;
 	}
+	int sock = -1;
+	BIO_get_fd( bio, &sock );
+	setsockopt( sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout) );
+	setsockopt( sock, SOL_SOCKET, SO_SNDTIMEO, (char*)&timeout, sizeof(timeout) );
 	_hComm.isSsl = true;
 	_hComm.ssl = ssl;
 	_hComm.ctx = ctx;
@@ -297,7 +297,7 @@ bool CHttp::sendSsl( const string& data )
 		int ret = BIO_write( _hComm.bio, data.data()+sent, sending );
 		if ( ret <= 0 )
 		{
-			cout<<"send error:"<<ERR_reason_error_string(ERR_get_error())<<endl;
+			cout<<"send error:"<<ERR_get_error()<<endl;
 			doClose();
 			return false;
 		}
@@ -340,7 +340,7 @@ bool CHttp::recvSsl( string& data )
 		}
 		else
 		{
-			cout<<"recv end:"<<ret<<", err:"<<ERR_reason_error_string(ERR_get_error())<<endl;
+			cout<<"recv end:"<<ret<<", err:"<<ERR_get_error()<<endl;
 		}
 	}
 
