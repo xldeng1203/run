@@ -263,8 +263,8 @@ void CHttp::doClose()
 #else
 			close( _hComm.sock );
 			_hComm.sock = -1;
-		}
 #endif
+		}
 	}
 }
 
