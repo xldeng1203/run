@@ -64,6 +64,10 @@ int main( int argc, char** argv )
 	WSADATA wsaData;
 	memset(&wsaData, 0, sizeof(wsaData));
 	::WSAStartup(0x0202, &wsaData);
+
+	SSL_load_error_strings();
+	ERR_load_BIO_strings();
+	OpenSSL_add_all_algorithms();
 #else
 	SSL_load_error_strings();
 	ERR_load_BIO_strings();

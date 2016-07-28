@@ -1,5 +1,5 @@
-#ifndef _HTTP_H_
-#define _HTTP_H_
+#ifndef _MIX_HTTP_H_
+#define _MIX_HTTP_H_
 #include "Utils.h"
 #include "openssl/bio.h"
 #include "openssl/ssl.h"
@@ -76,4 +76,4 @@ private:
 };
 
 
-#endif //_HTTP_H_
+#endif //_MIX_HTTP_H_
